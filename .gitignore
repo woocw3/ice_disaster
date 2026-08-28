@@ -1,0 +1,7 @@
+# 수집기가 쌓는 데이터 (latest.json, history/*.jsonl)
+data/
+*.tmp
+
+node_modules/
+.DS_Store
+Thumbs.db

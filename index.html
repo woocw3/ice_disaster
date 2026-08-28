@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>페루 빙하 융해 · GLOF 위험 모니터</title>
+<meta name="description" content="페루 안데스 빙하호의 실시간 융해 상황과 빙하호 붕괴 홍수(GLOF) 위험도를 모니터링하는 대시보드">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🏔️</text></svg>">
+<link rel="stylesheet" href="./assets/styles.css">
+</head>
+<body class="loading">
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true"></span>
+    <div>
+      <h1>페루 빙하 융해 · GLOF 위험 모니터</h1>
+      <p>안데스 빙하호의 융해 조건과 빙하호 붕괴 홍수 가능성을 실시간 기상·지진 자료로 추적합니다</p>
+    </div>
+  </div>
+  <div class="controls">
+    <div id="status" class="status"></div>
+    <label class="switch"><input type="checkbox" id="autoToggle" checked><span>10분 자동 갱신</span></label>
+    <button id="refreshBtn" class="btn">새로고침</button>
+  </div>
+</header>
+
+<div id="demoBanner" class="banner" hidden>
+  <b>데모 데이터입니다.</b>
+  실시간 API(Open-Meteo · USGS)에 연결하지 못해 형태만 같은 합성 시계열을 보여주고 있습니다.
+  화면의 모든 수치는 실제 관측값이 아니며 판단 근거로 쓸 수 없습니다.
+</div>
+
+<div id="alertBar" class="alertbar" hidden></div>
+
+<main>
+  <section id="kpis" class="kpis" aria-label="요약 지표"></section>
+
+  <section class="grid">
+    <div class="panel map-panel">
+      <div class="panel-head">
+        <h2>모니터링 지점</h2>
+        <div id="viewTabs" class="chips"></div>
+      </div>
+      <div id="map" class="map-host"></div>
+      <div id="legend"></div>
+      <p class="muted small">
+        ● 빙하호 (색 = 위험 등급, 후광 크기 = 점수) &nbsp;·&nbsp; ◇ 빙하 모니터링 지점 (융해만 관측)
+      </p>
+    </div>
+
+    <div class="panel list-panel">
+      <div class="panel-head">
+        <h2>지점별 현황</h2>
+        <div class="head-tools">
+          <select id="sortSel" aria-label="정렬 기준">
+            <option value="risk">위험도순</option>
+            <option value="melt">융해 강도순</option>
+            <option value="pop">하류 인구순</option>
+            <option value="name">이름순</option>
+          </select>
+        </div>
+      </div>
+      <div id="rangeFilter" class="chips"></div>
+      <div id="siteList" class="list"></div>
+      <p class="muted small">행을 누르면 아래에 상세 분석이 열립니다. 스파크라인은 최근 7일 기온(가로선 = 0 °C).</p>
+    </div>
+  </section>
+
+  <section id="detail" class="panel detail" hidden>
+    <button id="closeDetail" class="close" aria-label="상세 닫기">×</button>
+    <div id="detailBody"></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>페루 빙하 배경 지표</h2></div>
+    <p class="muted small">아래는 실시간 값이 아니라 공표된 국가 인벤토리·연구 결과의 참고 수치입니다.</p>
+    <div id="facts" class="facts"></div>
+  </section>
+
+  <section class="panel methodology">
+    <div class="panel-head"><h2>산정 방식과 한계</h2></div>
+    <div class="method-grid">
+      <div>
+        <h3>어떻게 계산하나</h3>
+        <ul>
+          <li><b>빙하 융해 (30%)</b> — 빙하 말단 고도로 내려 맞춘 기온의 지난 7일 양의 도일(PDD). 융해수 유입량의 대리 지표.</li>
+          <li><b>0 °C 동결고도 (20%)</b> — 최근 3일 평균 동결고도가 빙하 말단보다 높을수록 융해면이 넓게 노출됩니다.</li>
+          <li><b>강우 유입 (25%)</b> — 최근 3일 + 향후 3일 강우. 호수 수위를 올리고 모레인 댐을 약화시킵니다.</li>
+          <li><b>급격한 온난화 (10%)</b> — 향후 3일 평균기온에서 지난 7일 평균을 뺀 값.</li>
+          <li><b>지진 활동 (15%)</b> — 반경 250 km · 30일 내 지진을 규모/거리/경과일로 감쇠. 빙벽 붕락과 댐 붕괴의 방아쇠.</li>
+        </ul>
+        <p>다섯 요인을 0~1로 정규화해 가중 합산한 뒤, 지점별 정적 취약도(댐 형식 · 용적 · 하류 노출 · 저감 시설)를 0.5~1.0 배율로 곱해 0~100으로 환산합니다.</p>
+      </div>
+      <div>
+        <h3>데이터 출처</h3>
+        <ul>
+          <li><b>Open-Meteo Forecast API</b> — 기온 · 동결고도 · 강수 (과거 14일 + 예보 7일, 지점 고도로 다운스케일)</li>
+          <li><b>Open-Meteo Archive API</b> — ERA5 재분석 기반 장기 기온 추세</li>
+          <li><b>USGS Earthquake Catalog</b> — 페루 권역 M4.0+ 지진</li>
+          <li><b>정적 제원</b> — INAIGEM/ANA 국가 빙하·빙하호 인벤토리 및 GLOF 연구 문헌 기반 근삿값</li>
+        </ul>
+        <h3 class="warn-h">한계</h3>
+        <ul>
+          <li>호수 수위 · 모레인 댐 변위 · 빙하 두께를 <b>직접 관측하지 않습니다.</b> 기상·지진이라는 외부 조건만 봅니다.</li>
+          <li>GLOF의 상당수는 기상과 무관한 빙벽·암반 붕락으로 촉발되며, 이 모델은 그 순간을 예측하지 못합니다.</li>
+          <li>가중치는 문헌의 정성적 인과관계를 반영한 값이지 관측 사례로 보정(calibration)한 값이 아닙니다.</li>
+        </ul>
+      </div>
+    </div>
+    <p class="disclaimer">
+      ⚠ 이 대시보드는 공개 데이터로 만든 <b>스크리닝 지표</b>입니다.
+      INAIGEM · SENAMHI · INDECI 등 페루 당국의 공식 조기경보를 대체하지 않으며,
+      대피·통제 등 실제 방재 판단의 근거로 사용해서는 안 됩니다.
+    </p>
+  </section>
+</main>
+
+<footer>
+  <span>데이터: Open-Meteo · USGS · INAIGEM 공개 자료</span>
+  <span>시각은 한국 표준시(KST)로 표기, 괄호 안은 페루 현지시(UTC−5)</span>
+</footer>
+
+<script type="module" src="./assets/js/main.js"></script>
+</body>
+</html>
