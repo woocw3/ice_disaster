@@ -6,6 +6,7 @@
 <title>페루 빙하 융해 · GLOF 위험 모니터</title>
 <meta name="description" content="페루 안데스 빙하호의 실시간 융해 상황과 빙하호 붕괴 홍수(GLOF) 위험도를 모니터링하는 대시보드">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🏔️</text></svg>">
+<link rel="stylesheet" href="./vendor/leaflet/leaflet.css">
 <link rel="stylesheet" href="./assets/styles.css">
 </head>
 <body class="loading">
@@ -40,12 +41,16 @@
     <div class="panel map-panel">
       <div class="panel-head">
         <h2>모니터링 지점</h2>
-        <div id="viewTabs" class="chips"></div>
+        <div class="map-tools">
+          <div id="layerTabs" class="chips chips-sm"></div>
+          <div id="viewTabs" class="chips chips-sm"></div>
+        </div>
       </div>
       <div id="map" class="map-host"></div>
       <div id="legend"></div>
       <p class="muted small">
-        ● 빙하호 (색 = 위험 등급, 후광 크기 = 점수) &nbsp;·&nbsp; ◇ 빙하 모니터링 지점 (융해만 관측)
+        위성 화면에서 하얗게 보이는 것이 빙하, 청록색으로 고인 것이 빙하호입니다.
+        점을 누르면 상세 분석이 열립니다. ● 빙하호 · ◆ 빙하 관측 지점
       </p>
     </div>
 
@@ -63,7 +68,7 @@
       </div>
       <div id="rangeFilter" class="chips"></div>
       <div id="siteList" class="list"></div>
-      <p class="muted small">행을 누르면 아래에 상세 분석이 열립니다. 스파크라인은 최근 7일 기온(가로선 = 0 °C).</p>
+      <p class="muted small">행을 누르면 지도가 그곳으로 이동하고 아래에 상세 분석이 열립니다. 작은 그래프는 최근 7일 기온이며, 가로 점선이 0 °C입니다 — 선 위로 올라간 만큼 녹은 것입니다.</p>
     </div>
   </section>
 
@@ -82,6 +87,15 @@
     <div class="panel-head"><h2>산정 방식과 한계</h2></div>
     <div class="method-grid">
       <div>
+        <h3>점수 읽는 법</h3>
+        <ul>
+          <li><b>관심 (0~24)</b> — 평시 범위입니다.</li>
+          <li><b>주의 (25~49)</b> — 융해·강수가 평시보다 높습니다. 추이를 지켜볼 구간.</li>
+          <li><b>경계 (50~74)</b> — 여러 요인이 동시에 올라가 있습니다. 현장·하류 확인이 필요한 수준.</li>
+          <li><b>심각 (75~100)</b> — 조건이 크게 악화됐습니다. 공식 기관 발표를 반드시 함께 확인하세요.</li>
+        </ul>
+        <p>점수는 <b>지금 조건이 얼마나 나쁜가</b>를 나타내지, 붕괴 확률이나 남은 시간을 뜻하지 않습니다.</p>
+
         <h3>어떻게 계산하나</h3>
         <ul>
           <li><b>빙하 융해 (30%)</b> — 빙하 말단 고도로 내려 맞춘 기온의 지난 7일 양의 도일(PDD). 융해수 유입량의 대리 지표.</li>
@@ -117,10 +131,12 @@
 </main>
 
 <footer>
-  <span>데이터: Open-Meteo · USGS · INAIGEM 공개 자료</span>
+  <span>데이터: Open-Meteo · USGS · INAIGEM 공개 자료 · 지도 타일 Esri / OpenStreetMap</span>
   <span>시각은 한국 표준시(KST)로 표기, 괄호 안은 페루 현지시(UTC−5)</span>
 </footer>
 
+<!-- Leaflet 은 vendor/ 에 담아 CDN 없이 로드합니다. 모듈보다 먼저 실행돼야 window.L 이 준비됩니다. -->
+<script src="./vendor/leaflet/leaflet.js"></script>
 <script type="module" src="./assets/js/main.js"></script>
 </body>
 </html>

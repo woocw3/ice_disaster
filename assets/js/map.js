@@ -1,138 +1,155 @@
 /**
- * 타일 서버 없이 그리는 SVG 지도.
- * 외부 요청이 없으므로 오프라인·사내망에서도 그대로 렌더링된다.
- * 좌표는 등장방형(위경도 선형) 투영이며, 위도별 경도 축소만 보정한다.
+ * 실제 지도 — Leaflet + 위성 영상.
+ *
+ * 도식 지도로는 "빙하가 어디 있고 호수가 얼마나 큰지"가 보이지 않습니다.
+ * 위성 영상을 기본 배경으로 두면 하얀 빙하와 청록색 빙하호가 그대로 눈에 보입니다.
+ *
+ * Leaflet 은 vendor/leaflet 에 담아 두어 CDN 없이 동작합니다.
+ * 타일만 외부에서 받아오며, 타일이 막히면 배경 없이 마커만 표시됩니다.
+ * (구글 지도는 API 키와 결제 등록이 필요해 키 없이 쓸 수 있는 소스를 씁니다.)
  */
-import { el } from './charts.js';
 import { RANGES } from './sites.js';
 
-// 페루 국경·해안선 윤곽 (표시용 단순화 — 측량·경계 확정 용도가 아닙니다)
-const PERU = [
-  // 태평양 연안 (북 → 남)
-  [-80.30, -3.38], [-80.90, -3.60], [-81.05, -4.20], [-81.32, -4.65], [-81.16, -5.20],
-  [-80.90, -5.65], [-80.65, -5.95], [-79.95, -6.70], [-79.55, -7.10], [-78.95, -7.85],
-  [-78.65, -8.35], [-78.35, -8.90], [-78.10, -9.30], [-77.65, -10.00], [-77.25, -10.70],
-  [-77.15, -11.55], [-77.03, -12.05], [-76.30, -13.30], [-75.95, -14.05], [-75.20, -14.65],
-  [-74.30, -15.75], [-73.30, -16.20], [-72.40, -16.75], [-71.55, -17.20], [-70.85, -17.65],
-  [-70.40, -18.35],
-  // 칠레 · 볼리비아 국경 (남 → 북동)
-  [-69.85, -18.10], [-69.50, -17.50], [-69.20, -16.70], [-69.05, -16.20], [-69.40, -15.65],
-  [-69.60, -15.20], [-69.20, -14.60], [-68.95, -14.20], [-69.05, -13.70], [-68.75, -12.85],
-  [-69.40, -12.20], [-69.95, -11.00], [-70.55, -11.00], [-70.65, -10.50], [-71.25, -9.95],
-  // 브라질 국경
-  [-72.20, -9.90], [-72.95, -9.50], [-73.20, -9.40], [-72.80, -9.00], [-73.55, -8.40],
-  [-73.75, -7.80], [-74.05, -7.35], [-73.70, -6.90], [-73.15, -6.45], [-72.90, -5.15],
-  // 콜롬비아 국경 (레티시아 사다리꼴 포함)
-  [-71.75, -4.55], [-70.95, -4.35], [-70.10, -2.70], [-70.75, -2.55], [-71.85, -2.30],
-  [-73.15, -1.80], [-74.30, -0.95], [-75.25, -0.15], [-75.60, -0.15], [-76.10, -0.45],
-  // 에콰도르 국경 (동 → 서, 남쪽으로 파인 구간 포함)
-  [-77.00, -0.90], [-77.70, -1.05], [-78.35, -2.90], [-78.90, -4.55], [-79.60, -4.45],
-  [-80.15, -4.00], [-80.50, -3.55],
-];
+/**
+ * 이 배율 이상에서만 마커 이름표를 표시한다.
+ * 코르디예라 블랑카는 8곳이 반경 40 km 안에 몰려 있어(팔카코차·야카·툴파라후는 서로 1~5 km)
+ * 산맥 단위로 보는 배율에서는 이름표가 어차피 겹친다. 그 구간에서는
+ * 점 + 마우스오버 툴팁 + 오른쪽 목록으로 보고, 실제로 파고든 뒤에 이름표를 켠다.
+ * 선택한 지점만은 배율과 무관하게 항상 이름표를 보여준다(CSS .pin.is-selected).
+ */
+const LABEL_ZOOM = 12;
 
-const CORDILLERA = [
-  [[-80.0, -5.5], [-78.6, -7.0], [-77.6, -9.2], [-76.5, -11.5], [-75.3, -13.2], [-73.5, -14.5], [-71.9, -15.6], [-70.4, -17.0]],
-  [[-78.3, -6.0], [-77.2, -8.2], [-76.0, -10.5], [-74.5, -12.6], [-72.5, -13.6], [-70.9, -14.4], [-69.6, -16.0]],
-];
+const LAYERS = {
+  satellite: {
+    label: '위성',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    attribution: 'Esri, Maxar, Earthstar Geographics',
+    maxZoom: 17,
+  },
+  terrain: {
+    label: '지형',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
+    attribution: 'Esri, USGS, NOAA',
+    maxZoom: 17,
+  },
+  street: {
+    label: '일반',
+    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    attribution: '© OpenStreetMap contributors',
+    maxZoom: 18,
+  },
+};
 
 export const VIEWS = {
-  peru:      { label: '페루 전체',     bounds: [-81.8, -18.8, -68.3, 0.4] },
-  blanca:    { label: '코르디예라 블랑카', bounds: [-77.95, -9.85, -77.05, -8.65] },
-  vilcanota: { label: '비야노타 · 쿠스코',  bounds: [-71.60, -14.35, -70.35, -13.55] },
-  south:     { label: '중·남부',       bounds: [-76.20, -16.10, -70.00, -11.40] },
+  peru: { label: '페루 전체', center: [-11.6, -75.2], zoom: 5 },
+  blanca: { label: '코르디예라 블랑카', center: [-9.22, -77.45], zoom: 9 },
+  vilcanota: { label: '비야노타 · 쿠스코', center: [-13.9, -70.93], zoom: 9 },
+  south: { label: '중·남부', center: [-13.7, -73.5], zoom: 6 },
 };
 
 export class GlacierMap {
   constructor(host, { onSelect } = {}) {
     this.host = host;
     this.onSelect = onSelect ?? (() => {});
-    this.view = 'peru';
+    this.map = null;
+    this.markers = new Map();
+    this.layer = null;
+    this.layerId = 'satellite';
     this.results = [];
     this.selected = null;
   }
 
-  setView(v) { if (VIEWS[v]) { this.view = v; this.render(); } }
-  setData(results, selected) { this.results = results; this.selected = selected; this.render(); }
+  init() {
+    if (this.map || !window.L) return;
+    const L = window.L;
+    this.map = L.map(this.host, {
+      center: VIEWS.peru.center, zoom: VIEWS.peru.zoom,
+      minZoom: 4, maxZoom: 17,
+      zoomControl: true, scrollWheelZoom: true, attributionControl: true,
+    });
+    this.setLayer(this.layerId);
+    // 축척 막대가 있으면 "23 km 아래" 같은 거리 감각이 잡힌다
+    L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(this.map);
 
-  project(bounds) {
-    const [w, s, e, n] = bounds;
-    const midLat = (s + n) / 2;
-    const kx = Math.cos((midLat * Math.PI) / 180);
-    const spanX = (e - w) * kx, spanY = n - s;
-    const W = 100 * (spanX / Math.max(spanX, spanY));
-    const H = 100 * (spanY / Math.max(spanX, spanY));
-    return {
-      W, H,
-      x: (lon) => ((lon - w) * kx / spanX) * W,
-      y: (lat) => ((n - lat) / spanY) * H,
+    // 축소 상태에서는 이름표가 서로 겹쳐 읽을 수 없다.
+    // 충분히 확대했을 때만 켜고, 그 전에는 점 + 마우스오버 툴팁으로 본다.
+    const syncLabels = () => {
+      this.host.classList.toggle('show-labels', this.map.getZoom() >= LABEL_ZOOM);
     };
+    this.map.on('zoomend', syncLabels);
+    syncLabels();
   }
 
-  render() {
-    const bounds = VIEWS[this.view].bounds;
-    const p = this.project(bounds);
-    const svg = el('svg', {
-      viewBox: `-3 -3 ${p.W + 6} ${p.H + 6}`, class: 'map', role: 'img',
-      'aria-label': '페루 빙하호 위험도 지도',
-    });
+  setLayer(id) {
+    if (!this.map || !LAYERS[id]) return;
+    const L = window.L;
+    if (this.layer) this.map.removeLayer(this.layer);
+    const cfg = LAYERS[id];
+    this.layerId = id;
+    this.layer = L.tileLayer(cfg.url, { attribution: cfg.attribution, maxZoom: cfg.maxZoom }).addTo(this.map);
+  }
 
-    const path = (pts, close) =>
-      pts.map(([lo, la], i) => `${i ? 'L' : 'M'}${p.x(lo).toFixed(2)} ${p.y(la).toFixed(2)}`).join(' ') + (close ? ' Z' : '');
+  setView(v) {
+    if (!this.map || !VIEWS[v]) return;
+    this.map.flyTo(VIEWS[v].center, VIEWS[v].zoom, { duration: 0.7 });
+  }
 
-    svg.append(el('path', { d: path(PERU, true), class: 'map-land' }));
-    for (const ridge of CORDILLERA) svg.append(el('path', { d: path(ridge, false), class: 'map-ridge' }));
+  focusSite(id) {
+    const r = this.results.find((x) => x.site.id === id);
+    if (r && this.map) this.map.flyTo([r.site.lat, r.site.lon], Math.max(this.map.getZoom(), 12), { duration: 0.8 });
+  }
 
-    // 산맥 라벨 (전체 보기에서만)
-    if (this.view === 'peru') {
-      const groups = new Map();
-      for (const r of this.results) {
-        const g = groups.get(r.site.rangeId) ?? [];
-        g.push(r); groups.set(r.site.rangeId, g);
-      }
-      for (const [rangeId, list] of groups) {
-        const lon = list.reduce((s, r) => s + r.site.lon, 0) / list.length;
-        const lat = list.reduce((s, r) => s + r.site.lat, 0) / list.length;
-        // 마커 후광과 겹치지 않도록 왼쪽으로 충분히 띄우고 연결선을 그린다
-        const lx = p.x(lon) - 5.5, ly = p.y(lat) - 0.6;
-        svg.append(el('line', {
-          x1: lx + 0.7, y1: ly - 0.7, x2: p.x(lon) - 2.6, y2: p.y(lat) - 0.9, class: 'map-leader',
-        }));
-        svg.append(el('text', {
-          x: lx, y: ly, class: 'map-range-label', 'text-anchor': 'end',
-        }, [RANGES[rangeId]?.label ?? rangeId]));
-      }
-    }
+  setData(results, selected) {
+    this.init();
+    if (!this.map) return;
+    this.results = results;
+    this.selected = selected;
+    const L = window.L;
 
-    for (const r of this.results) {
+    for (const r of results) {
       const { site } = r;
-      const cx = p.x(site.lon), cy = p.y(site.lat);
-      if (cx < -4 || cx > p.W + 4 || cy < -4 || cy > p.H + 4) continue;
-
       const isLake = site.type === 'lake';
-      const color = isLake && r.level ? r.level.color : '#94a3b8';
+      const color = isLake && r.level ? r.level.color : '#cbd5e1';
       const score = isLake ? (r.score ?? 0) : (r.meltScore ?? 0);
-      const rad = this.view === 'peru' ? 1.5 : 1.9;
-      const isSel = this.selected === site.id;
+      const isSel = selected === site.id;
 
-      const g = el('g', { class: `marker${isSel ? ' is-selected' : ''}`, tabindex: '0', role: 'button' });
-      // 위험도가 높을수록 후광이 커진다
-      g.append(el('circle', { cx, cy, r: rad + 1.4 + (score / 100) * 3.4, fill: color, opacity: 0.16 }));
-      if (score >= 50 && isLake) g.append(el('circle', { cx, cy, r: rad + 1.2, fill: 'none', stroke: color, 'stroke-width': 0.35, class: 'pulse' }));
-      g.append(el(isLake ? 'circle' : 'rect', isLake
-        ? { cx, cy, r: rad, fill: color, stroke: '#0b1220', 'stroke-width': 0.35 }
-        : { x: cx - rad, y: cy - rad, width: rad * 2, height: rad * 2, fill: 'none', stroke: color, 'stroke-width': 0.5, transform: `rotate(45 ${cx} ${cy})` }));
-      g.append(el('title', {}, [`${site.name} · ${isLake ? `위험도 ${r.score ?? '—'}` : `융해 ${r.meltScore ?? '—'}`}`]));
+      const html = `
+        <span class="pin-halo" style="--c:${color};--s:${(score / 100).toFixed(2)}"></span>
+        <span class="pin-dot ${isLake ? '' : 'is-glacier'}" style="--c:${color}"></span>
+        <span class="pin-label">${site.name}<b style="color:${color}">${isLake ? (r.score ?? '—') : `융해 ${r.meltScore ?? '—'}`}</b></span>`;
 
-      if (this.view !== 'peru') {
-        g.append(el('text', { x: cx + rad + 1.2, y: cy + 1.1, class: 'map-label' }, [site.name]));
+      const icon = L.divIcon({
+        className: `pin${isSel ? ' is-selected' : ''}${score >= 50 && isLake ? ' is-hot' : ''}`,
+        html, iconSize: [16, 16], iconAnchor: [8, 8],
+      });
+
+      let mk = this.markers.get(site.id);
+      if (mk) {
+        mk.setIcon(icon);
+      } else {
+        mk = L.marker([site.lat, site.lon], { icon, title: site.name, riseOnHover: true })
+          .addTo(this.map)
+          .on('click', () => this.onSelect(site.id));
+        this.markers.set(site.id, mk);
       }
-
-      const pick = () => this.onSelect(site.id);
-      g.addEventListener('click', pick);
-      g.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } });
-      svg.append(g);
+      mk.bindTooltip(tooltipHTML(r), { direction: 'top', offset: [0, -12], opacity: 0.98, className: 'pin-tip' });
     }
-
-    this.host.replaceChildren(svg);
   }
 }
+
+function tooltipHTML(r) {
+  const { site, metrics } = r;
+  const isLake = site.type === 'lake';
+  const anom = Number.isFinite(metrics.flAnom) ? Math.round(metrics.flAnom) : null;
+  return `
+    <b>${site.name}</b>
+    <small>${site.range} · ${site.region}</small>
+    <div class="tip-row"><span>${isLake ? '위험도' : '융해 강도'}</span>
+      <b style="color:${isLake && r.level ? r.level.color : '#cbd5e1'}">${isLake ? `${r.score} / 100 · ${r.level.label}` : `${r.meltScore} / 100`}</b></div>
+    <div class="tip-row"><span>지난 7일 녹은 시간</span><b>${metrics.meltHours7 ?? '—'}시간</b></div>
+    <div class="tip-row"><span>0 °C 경계</span><b>${anom === null ? '—' : `빙하 말단 ${anom >= 0 ? '+' : '−'}${Math.abs(anom)} m`}</b></div>
+    ${isLake && site.downstream ? `<div class="tip-row"><span>하류</span><b>${site.downstream.city} ${site.downstream.pop.toLocaleString('ko-KR')}명</b></div>` : ''}
+    <em>클릭하면 상세 분석</em>`;
+}
+
+export { LAYERS, RANGES };

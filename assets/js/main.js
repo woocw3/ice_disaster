@@ -2,7 +2,7 @@
 import { SITES } from './sites.js';
 import { computeRisk } from './risk.js';
 import { loadBundle, fetchArchive, fetchHistory } from './api.js';
-import { GlacierMap, VIEWS } from './map.js';
+import { GlacierMap, VIEWS, LAYERS } from './map.js';
 import * as UI from './ui.js';
 
 const REFRESH_MS = 10 * 60e3;
@@ -35,6 +35,16 @@ async function boot() {
         [...$('viewTabs').children].forEach((c) => c.classList.remove('on'));
         e.currentTarget.classList.add('on');
         gmap.setView(k);
+      },
+    }, [v.label])));
+
+  $('layerTabs').replaceChildren(...Object.entries(LAYERS).map(([k, v]) =>
+    UI.h('button', {
+      class: `chip${k === 'satellite' ? ' on' : ''}`,
+      onclick: (e) => {
+        [...$('layerTabs').children].forEach((c) => c.classList.remove('on'));
+        e.currentTarget.classList.add('on');
+        gmap.setLayer(k);
       },
     }, [v.label])));
 
@@ -103,7 +113,7 @@ function paint() {
   const list = visible();
   UI.renderStatus($('status'), state.bundle);
   $('demoBanner').hidden = state.bundle.source !== 'demo';
-  UI.renderKPIs($('kpis'), state.results, state.bundle.quakes ?? [], state.bundle);
+  UI.renderKPIs($('kpis'), state.results, state.bundle.quakes ?? []);
   UI.renderList($('siteList'), list, state.selected, select);
   gmap.setData(state.results, state.selected);
   UI.renderRangeFilter($('rangeFilter'), state.range, (k) => { state.range = k; paint(); });
@@ -113,7 +123,7 @@ function paint() {
   $('alertBar').hidden = alerts.length === 0;
   if (alerts.length) {
     $('alertBar').replaceChildren(
-      UI.h('b', {}, [`${alerts.length}개 지점 경계 이상`]),
+      UI.h('b', {}, [`${alerts.length}곳 경계 이상`]),
       UI.h('span', {}, [alerts.map((a) => `${a.site.name}(${a.score})`).join(' · ')]),
     );
   }
@@ -138,6 +148,7 @@ async function select(id) {
   state.selected = state.selected === id ? null : id;
   paint();
   if (state.selected) {
+    gmap.focusSite(state.selected);
     $('detail').scrollIntoView({ behavior: 'smooth', block: 'start' });
     if (state.bundle.hasHistory && !state.history.has(state.selected)) {
       try {
