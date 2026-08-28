@@ -139,20 +139,63 @@ main { padding: clamp(1rem, 2.4vw, 1.75rem) clamp(1rem, 3vw, 2rem) 3rem; max-wid
 .chip:hover { color: var(--fg); border-color: #2d4569; }
 .chip.on { background: #14304d; color: var(--ice); border-color: #2c6a94; }
 
-/* ---------- 지도 ---------- */
-.map-host { background: #070c15; border: 1px solid var(--line-soft); border-radius: 10px; padding: .5rem; }
-.map { width: 100%; height: auto; max-height: 62vh; display: block; }
-.map-land { fill: #0f1d31; stroke: #2b4569; stroke-width: .28; }
-.map-ridge { fill: none; stroke: #3c5f86; stroke-width: .5; stroke-dasharray: 1.4 1; opacity: .65; }
-.map-range-label { font-size: 2.1px; fill: #7d94b3; letter-spacing: .04px;
-  paint-order: stroke; stroke: #070c15; stroke-width: .5; }
-.map-leader { stroke: #3c5f86; stroke-width: .18; opacity: .7; }
-.map-label { font-size: 2.2px; fill: #cbd5e1; paint-order: stroke; stroke: #070c15; stroke-width: .55; }
-.marker { cursor: pointer; outline: none; }
-.marker:hover circle:first-child, .marker:focus-visible circle:first-child { opacity: .34; }
-.marker.is-selected circle:first-child { opacity: .42; }
-.marker .pulse { animation: ring 2.6s ease-out infinite; transform-box: fill-box; transform-origin: center; }
-@keyframes ring { 0% { opacity: .9; transform: scale(1) } 100% { opacity: 0; transform: scale(2.1) } }
+/* ---------- 지도 (Leaflet) ---------- */
+.map-tools { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
+.chips-sm .chip { font-size: 11.5px; padding: .2rem .5rem; }
+.map-host {
+  height: min(62vh, 620px); min-height: 340px;
+  background: #070c15; border: 1px solid var(--line-soft); border-radius: 10px; overflow: hidden;
+}
+.leaflet-container { background: #070c15; font: inherit; }
+.leaflet-control-attribution {
+  background: rgba(8,13,22,.78) !important; color: var(--fg-3) !important; font-size: 10px;
+}
+.leaflet-control-attribution a { color: var(--fg-2) !important; }
+.leaflet-bar a {
+  background: var(--panel-2); color: var(--fg); border-color: var(--line);
+}
+.leaflet-bar a:hover { background: #1d2d4a; color: #fff; }
+.leaflet-control-scale-line {
+  background: rgba(8,13,22,.7); color: var(--fg-2); border-color: var(--line);
+}
+
+/* 마커 */
+.pin { position: relative; }
+.pin-halo {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: calc(18px + var(--s) * 34px); height: calc(18px + var(--s) * 34px);
+  border-radius: 50%; background: var(--c); opacity: .2;
+}
+.pin-dot {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: 13px; height: 13px; border-radius: 50%;
+  background: var(--c); box-shadow: 0 0 0 2px #0b1220, 0 0 10px -1px var(--c);
+}
+.pin-dot.is-glacier { border-radius: 2px; transform: translate(-50%, -50%) rotate(45deg); background: transparent; border: 2.5px solid var(--c); }
+.pin.is-hot .pin-halo { animation: pinpulse 2.4s ease-out infinite; }
+@keyframes pinpulse { 0%,100% { opacity: .18 } 50% { opacity: .42 } }
+.pin.is-selected .pin-dot { box-shadow: 0 0 0 3px #fff, 0 0 14px var(--c); }
+.pin-label {
+  position: absolute; left: 14px; top: -7px; white-space: nowrap;
+  font-size: 11px; font-weight: 550; color: #e8eef8;
+  text-shadow: 0 0 4px #000, 0 0 8px #000; pointer-events: none;
+  display: none;   /* 확대했을 때만 (.show-labels) 표시 — 축소 시 라벨이 겹친다 */
+}
+.map-host.show-labels .pin-label,
+.pin.is-selected .pin-label { display: block; }
+.pin-label b { margin-left: .3rem; font-variant-numeric: tabular-nums; }
+
+.pin-tip.leaflet-tooltip {
+  background: rgba(13,21,36,.97); border: 1px solid var(--line); color: var(--fg);
+  border-radius: 9px; padding: .55rem .7rem; box-shadow: 0 10px 28px -10px #000;
+  font-size: 12px; max-width: 260px; white-space: normal;
+}
+.pin-tip.leaflet-tooltip::before { border-top-color: var(--line); }
+.pin-tip b { font-size: 13px; }
+.pin-tip small { display: block; color: var(--fg-3); font-size: 10.5px; margin-bottom: .35rem; }
+.pin-tip .tip-row { display: flex; justify-content: space-between; gap: .8rem; margin-top: .18rem; }
+.pin-tip .tip-row span { color: var(--fg-3); }
+.pin-tip em { display: block; margin-top: .4rem; color: var(--accent); font-style: normal; font-size: 10.5px; }
 
 .legend { display: flex; gap: .8rem; flex-wrap: wrap; margin: .6rem 0 .35rem; }
 .legend-item { display: inline-flex; align-items: center; gap: .32rem; font-size: 12px; color: var(--fg-2); }
@@ -172,9 +215,9 @@ main { padding: clamp(1rem, 2.4vw, 1.75rem) clamp(1rem, 3vw, 2rem) 3rem; max-wid
 .row-meta { display: block; font-size: 11.5px; color: var(--fg-3); }
 .tag { font-size: 10px; padding: 1px 5px; margin-left: .35rem; border-radius: 4px; background: #1e3a52; color: #93c5fd; font-weight: 500; }
 .row-spark { line-height: 0; opacity: .85; }
-.row-fl { text-align: right; font-variant-numeric: tabular-nums; }
-.row-fl b { display: block; font-size: 13px; color: var(--ice); font-weight: 600; }
-.row-fl small, .row-score small { display: block; font-size: 10px; color: var(--fg-3); }
+.row-melt { text-align: right; font-variant-numeric: tabular-nums; }
+.row-melt b { display: block; font-size: 13px; color: var(--ice); font-weight: 600; }
+.row-melt small, .row-score small { display: block; font-size: 10px; color: var(--fg-3); }
 .row-score { text-align: right; min-width: 44px; }
 .row-score b { display: block; font-size: 19px; color: var(--c); font-variant-numeric: tabular-nums; font-weight: 660; }
 .spark-zero { stroke: #475569; stroke-width: .7; stroke-dasharray: 2 2; }
@@ -253,3 +296,69 @@ footer {
 .list::-webkit-scrollbar { width: 8px; }
 .list::-webkit-scrollbar-thumb { background: #22334d; border-radius: 4px; }
 .list::-webkit-scrollbar-track { background: transparent; }
+
+
+/* ---------- 해석 계층 ---------- */
+.verdict {
+  border-left: 3px solid var(--c); border-radius: 0 10px 10px 0;
+  background: color-mix(in srgb, var(--c) 9%, #0c1524);
+  padding: .8rem .95rem; margin-bottom: .8rem;
+}
+.verdict-main { margin: 0; font-size: 13.5px; color: var(--fg); line-height: 1.6; }
+.verdict-sub { margin: .35rem 0 0; font-size: 12.5px; color: var(--fg-2); }
+
+.card-hero { background: linear-gradient(165deg, #0e1a2c, #0a1220); border-color: #24384f; }
+.xsec { width: 100%; height: auto; display: block; margin-top: .4rem; }
+.xs-sky { fill: #0a1424; }
+.xs-grid { stroke: #1b2b45; stroke-width: .7; stroke-dasharray: 3 4; }
+.xs-axis { fill: #6e7f99; font-size: 9.5px; font-family: var(--mono); }
+.xs-unit { fill: #8ea3bf; }
+.xs-fl { stroke: #38bdf8; stroke-width: 1.6; stroke-dasharray: 6 4; }
+.xs-fl-label { fill: #7dd3fc; font-size: 10.5px; font-weight: 600;
+  paint-order: stroke; stroke: #0a1424; stroke-width: 3px; stroke-linejoin: round; }
+.xs-melt-label { fill: #fdba74; font-size: 11px; font-weight: 600;
+  paint-order: stroke; stroke: #0a1424; stroke-width: 3px; stroke-linejoin: round; }
+.xs-label { fill: #cbd5e1; font-size: 10.5px;
+  paint-order: stroke; stroke: #0a1424; stroke-width: 3px; stroke-linejoin: round; }
+.xs-ice-label { fill: #dbeafe; font-size: 12px; font-weight: 700; letter-spacing: .05em;
+  paint-order: stroke; stroke: #14293f; stroke-width: 3.5px; stroke-linejoin: round; }
+.xs-lead { stroke: #64748b; stroke-width: .9; }
+.xs-tick { stroke: #f43f5e; stroke-width: 1.6; }
+.xs-water { fill: #2b7fb8; stroke: #7dd3fc; stroke-width: 1; }
+.xs-dam { fill: #a8b6c9; font-size: 9.5px; }
+.xs-flow { stroke: #f87171; stroke-width: 1.8; fill: none; stroke-dasharray: 5 3; }
+.xs-town { fill: #fca5a5; font-size: 11px; font-weight: 600;
+  paint-order: stroke; stroke: #0a1424; stroke-width: 3px; stroke-linejoin: round; }
+
+.explain { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: .75rem; margin-top: .6rem; }
+.ex { border: 1px solid var(--line-soft); border-radius: 10px; padding: .75rem .85rem; background: #0a1220; }
+.ex-top { display: flex; justify-content: space-between; align-items: center; gap: .5rem; }
+.ex-title { font-size: 12.5px; font-weight: 600; color: var(--fg); }
+.ex-band {
+  font-size: 10.5px; font-weight: 600; color: var(--c); white-space: nowrap;
+  border: 1px solid var(--c); border-radius: 999px; padding: .08rem .45rem;
+}
+.ex-value { font-size: 22px; font-weight: 660; margin-top: .25rem; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.ex-value small { font-size: 11px; font-weight: 400; color: var(--fg-3); margin-left: .35rem; }
+.ex-track { height: 5px; border-radius: 3px; background: #16233a; margin: .45rem 0 .5rem; overflow: hidden; }
+.ex-fill { height: 100%; border-radius: 3px; transition: width .45s ease; }
+.ex-plain { margin: 0; font-size: 12.5px; line-height: 1.62; color: var(--fg-2); }
+.ex-detail { margin-top: .45rem; font-size: 10.5px; color: var(--fg-3); font-family: var(--mono); }
+
+.exposure {
+  font-size: 13px; line-height: 1.65; color: var(--fg-2);
+  padding: .6rem .75rem; border-radius: 8px; background: #1a1016; border: 1px solid #4c1d2b; margin-bottom: .7rem;
+}
+
+.fold { padding: 0; }
+.fold > summary {
+  cursor: pointer; padding: .8rem .95rem; font-size: 13px; color: var(--fg-2);
+  list-style: none; display: flex; align-items: center; gap: .45rem;
+}
+.fold > summary::-webkit-details-marker { display: none; }
+.fold > summary::before { content: "▸"; color: var(--fg-3); transition: transform .2s; }
+.fold[open] > summary::before { transform: rotate(90deg); }
+.fold > summary:hover { color: var(--fg); }
+.fold-body { padding: 0 .95rem .95rem; }
+.fold-body h4 { font-size: 12.5px; margin: 1rem 0 .2rem; color: var(--fg-2); }
+.fold-body h4:first-child { margin-top: 0; }

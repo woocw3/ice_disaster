@@ -67,6 +67,11 @@ export function deriveMetrics(site, wx) {
   const pdd7 = t7.reduce((s, v) => s + Math.max(0, v), 0) / 24;
   const pddFc3 = t3f.reduce((s, v) => s + Math.max(0, v), 0) / 24;
 
+  // 도일은 직관적이지 않으므로 "영상이었던 시간"도 함께 낸다 — 화면에서 이쪽을 먼저 보여준다.
+  const meltHours7 = t7.filter((v) => v > 0).length;
+  const meltPct7 = t7.length ? (meltHours7 / t7.length) * 100 : NaN;
+  const tMaxRecent = t7.length ? Math.max(...t7) : NaN;
+
   const flMean3 = mean(fl3);
   // 0 °C 고도가 빙하 말단보다 얼마나 위에 있는가 = 융해면 노출 폭
   const flAnom = Number.isFinite(flMean3) ? flMean3 - site.glacierElev : NaN;
@@ -81,7 +86,7 @@ export function deriveMetrics(site, wx) {
   return {
     tNow: H.temperature_2m?.[i0] ?? NaN,
     tMean7: mean(t7),
-    pdd7, pddFc3,
+    pdd7, pddFc3, meltHours7, meltPct7, tMaxRecent,
     flNow, flMean3, flAnom,
     rainSum3, rainFcSum3, snowSum7,   // 강우 mm, 강설 cm
     warmSpike,
