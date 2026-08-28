@@ -293,7 +293,9 @@ export function renderStatus(host, bundle) {
     demo: ['demo', '데모 데이터 — 실제 관측값 아님'],
   };
   const [cls, text] = map[bundle.source] ?? ['demo', '알 수 없음'];
-  host.className = `status ${cls}`;
+  // className 을 통째로 덮어쓰면 index.html 이 붙여 둔 peru-only 가 날아가
+  // 전 지구 뷰에서도 배지가 남는다.
+  host.className = `status peru-only ${cls}`;
   mount(host,
     h('i'), h('span', {}, [text]),
     h('small', {}, [`갱신 ${timeKST(bundle.fetchedAt)} · 현지 ${timePeru(bundle.fetchedAt)}`]),
