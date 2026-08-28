@@ -182,3 +182,83 @@ export function linreg(xs, ys) {
   const slope = den === 0 ? 0 : num / den;
   return { slope, intercept: my - slope * mx };
 }
+
+/**
+ * 히트맵 — 행(지역) × 열(연대) 격자.
+ * cells: [{row, col, value, label}]  rows/cols: 축 라벨 배열
+ * 값이 없으면(null) 빈 칸으로 둔다.
+ */
+export function heatmap(rows, cols, cells, {
+  cellH = 22, labelW = 176, colW = 58, pad = { t: 26, r: 8, b: 8 },
+  scale = divergingScale(0, 3), onClick, format = (v) => v?.toFixed(1) ?? '',
+} = {}) {
+  const w = labelW + cols.length * colW + pad.r;
+  const h = pad.t + rows.length * cellH + pad.b;
+  const svg = el('svg', { viewBox: `0 0 ${w} ${h}`, class: 'heat', role: 'img' });
+
+  cols.forEach((c, j) => svg.append(el('text', {
+    x: labelW + j * colW + colW / 2, y: pad.t - 9, class: 'heat-col', 'text-anchor': 'middle',
+  }, [c.label ?? c])));
+
+  const map = new Map(cells.map((c) => [`${c.row}|${c.col}`, c]));
+
+  rows.forEach((r, i) => {
+    const y = pad.t + i * cellH;
+    const g = el('g', { class: 'heat-row', tabindex: onClick ? '0' : null, role: onClick ? 'button' : null });
+    g.append(el('text', { x: labelW - 8, y: y + cellH / 2 + 3.5, class: 'heat-label', 'text-anchor': 'end' },
+      [r.label ?? r]));
+    cols.forEach((c, j) => {
+      const key = `${r.id ?? r}|${c.id ?? c}`;
+      const cell = map.get(key);
+      const x = labelW + j * colW;
+      const v = cell?.value;
+      svg.append(el('rect', {
+        x: x + 1, y: y + 1, width: colW - 2, height: cellH - 2, rx: 3,
+        fill: Number.isFinite(v) ? scale(v) : 'rgba(148,163,184,.07)',
+      }, [el('title', {}, [cell?.tip ?? `${r.label ?? r} · ${c.label ?? c}: 자료 없음`])]));
+      if (Number.isFinite(v)) {
+        svg.append(el('text', {
+          x: x + colW / 2, y: y + cellH / 2 + 3.5, class: 'heat-val', 'text-anchor': 'middle',
+          fill: contrastOn(v, scale),
+        }, [format(v)]));
+      }
+    });
+    if (onClick) {
+      g.addEventListener('click', () => onClick(r));
+      g.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(r); } });
+      g.append(el('rect', { x: 0, y, width: w, height: cellH, fill: 'transparent', class: 'heat-hit' }));
+    }
+    svg.append(g);
+  });
+  return svg;
+}
+
+/** 0을 중심으로 파랑(음) ↔ 빨강(양) */
+export function divergingScale(mid = 0, span = 3) {
+  return (v) => {
+    const t = Math.max(-1, Math.min(1, (v - mid) / span));
+    if (t >= 0) {
+      // 옅은 노랑 → 주황 → 진홍
+      const stops = [[254, 243, 199], [252, 165, 60], [225, 29, 72]];
+      return lerpStops(stops, t);
+    }
+    const stops = [[219, 234, 254], [96, 165, 250], [30, 64, 175]];
+    return lerpStops(stops, -t);
+  };
+}
+
+function lerpStops(stops, t) {
+  const seg = t * (stops.length - 1);
+  const i = Math.min(stops.length - 2, Math.floor(seg));
+  const f = seg - i;
+  const c = stops[i].map((a, k) => Math.round(a + (stops[i + 1][k] - a) * f));
+  return `rgb(${c.join(',')})`;
+}
+
+/** 칸 색이 밝으면 어두운 글씨, 어두우면 밝은 글씨 */
+function contrastOn(v, scale) {
+  const m = /rgb\((\d+),(\d+),(\d+)\)/.exec(scale(v));
+  if (!m) return '#0b1220';
+  const [r, g, b] = m.slice(1).map(Number);
+  return (0.299 * r + 0.587 * g + 0.114 * b) > 150 ? '#3d1a08' : '#fff5f5';
+}

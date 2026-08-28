@@ -4,6 +4,7 @@ import { computeRisk } from './risk.js';
 import { loadBundle, fetchArchive, fetchHistory } from './api.js';
 import { GlacierMap, VIEWS, LAYERS } from './map.js';
 import * as UI from './ui.js';
+import { initGlobalView } from './globalview.js';
 
 const REFRESH_MS = 10 * 60e3;
 
@@ -23,7 +24,26 @@ const $ = (id) => document.getElementById(id);
 
 const gmap = new GlacierMap($('map'), { onSelect: select });
 
+/** 상단 탭 — 전 지구 뷰는 처음 열 때 한 번만 초기화한다(자료 수집이 무겁다). */
+let globalReady = false;
+function showView(which) {
+  const isPeru = which === 'peru';
+  $('peruView').hidden = !isPeru;
+  $('globalView').hidden = isPeru;
+  $('tabPeru').classList.toggle('on', isPeru);
+  $('tabGlobal').classList.toggle('on', !isPeru);
+  $('tabPeru').setAttribute('aria-selected', String(isPeru));
+  $('tabGlobal').setAttribute('aria-selected', String(!isPeru));
+  document.body.classList.toggle('view-peru', isPeru);
+  if (isPeru) gmap.invalidate();
+  else if (!globalReady) { globalReady = true; initGlobalView($('globalView')); }
+  try { location.hash = isPeru ? '#peru' : '#global'; } catch { /* noop */ }
+}
+
 async function boot() {
+  $('tabPeru').addEventListener('click', () => showView('peru'));
+  $('tabGlobal').addEventListener('click', () => showView('global'));
+
   UI.renderLegend($('legend'));
   UI.renderFacts($('facts'));
   UI.renderRangeFilter($('rangeFilter'), state.range, (k) => { state.range = k; paint(); });
@@ -57,6 +77,7 @@ async function boot() {
   $('closeDetail').addEventListener('click', () => select(null));
 
   await refresh();
+  showView(location.hash === '#peru' ? 'peru' : 'global');
 }
 
 async function refresh(manual = false) {

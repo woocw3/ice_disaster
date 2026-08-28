@@ -64,9 +64,38 @@ export class GlacierMap {
     const L = window.L;
     this.map = L.map(this.host, {
       center: VIEWS.peru.center, zoom: VIEWS.peru.zoom,
-      minZoom: 4, maxZoom: 17,
-      zoomControl: true, scrollWheelZoom: true, attributionControl: true,
+      minZoom: 5, maxZoom: 17, zoomSnap: 0.5,
+      zoomControl: true, attributionControl: true,
+      // 페이지를 스크롤할 때 커서가 지도 위에 있으면 지도가 확대·축소돼
+      // 엉뚱한 곳으로 가 버린다. Ctrl(⌘) + 휠일 때만 확대되게 한다.
+      scrollWheelZoom: false,
     });
+    this.host.addEventListener('wheel', (e) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        this.map.setZoom(this.map.getZoom() - Math.sign(e.deltaY) * 0.5);
+      }
+    }, { passive: false });
+    // 최소 확대에서 화면이 제한 범위보다 넓으면 지도가 계속 튕기므로,
+    // zoom 5 화면(약 경도 35°)보다 넉넉한 범위를 잡는다.
+    this.map.setMaxBounds([[-60, -100], [12, -50]]);
+    this.map.on('drag', () => this.map.panInsideBounds(this.map.options.maxBounds, { animate: false }));
+
+    // 헤매다 돌아올 수 있는 초기화 버튼
+    const Home = L.Control.extend({
+      options: { position: 'topleft' },
+      onAdd: () => {
+        const el = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+        const a = L.DomUtil.create('a', '', el);
+        a.href = '#'; a.title = '페루 전체 보기로 되돌리기'; a.textContent = '⌂';
+        L.DomEvent.on(a, 'click', (e) => {
+          L.DomEvent.stop(e);
+          this.map.flyTo(VIEWS.peru.center, VIEWS.peru.zoom, { duration: 0.6 });
+        });
+        return el;
+      },
+    });
+    this.map.addControl(new Home());
     this.setLayer(this.layerId);
     // 축척 막대가 있으면 "23 km 아래" 같은 거리 감각이 잡힌다
     L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(this.map);
@@ -78,6 +107,11 @@ export class GlacierMap {
     };
     this.map.on('zoomend', syncLabels);
     syncLabels();
+  }
+
+  /** 숨겨진 상태에서 초기화되면 Leaflet 이 크기를 0 으로 잡는다. 탭이 보일 때 다시 계산. */
+  invalidate() {
+    if (this.map) setTimeout(() => this.map.invalidateSize(), 60);
   }
 
   setLayer(id) {

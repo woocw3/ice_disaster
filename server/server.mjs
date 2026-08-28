@@ -19,6 +19,8 @@ import { fileURLToPath } from 'node:url';
 import { SITES } from '../assets/js/sites.js';
 import { computeRisk } from '../assets/js/risk.js';
 import { makeDemoBundle } from '../assets/js/demo.js';
+import { RGI_REGIONS } from '../assets/js/regions.js';
+import { archiveURL, yearlyStats, summarize } from '../assets/js/globalclimate.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -34,6 +36,8 @@ const CONF = {
   // DEMO=1 이면 외부 API 대신 합성 데이터를 씁니다. 배포 직후 파이프라인
   // (수집 → 이력 적재 → API 제공 → 알림)이 도는지 확인할 때만 쓰세요.
   demo: process.env.DEMO === '1',
+  // 전 지구 연대별 기후는 매일 바뀌지 않는다. 기본 7일마다 한 번.
+  climateDays: Number(process.env.CLIMATE_REFRESH_DAYS ?? 7),
 };
 
 const OPEN_METEO = 'https://api.open-meteo.com/v1/forecast';
@@ -109,6 +113,7 @@ async function collect() {
   const snapshots = await appendHistory(bundle);
   log(`수집 완료 — ${Object.keys(sites).length}/${SITES.length} 지점, 지진 ${quakes.length}건, 실패 ${failures.length}건`);
   await maybeAlert(snapshots);
+  collectClimate().catch((e) => log('기후 계산 실패:', e.message));
   return bundle;
 }
 
@@ -121,7 +126,73 @@ async function collectDemo() {
   const snapshots = await appendHistory(bundle);
   log(`DEMO 수집 완료 — ${Object.keys(wx).length}개 지점 이력 적재`);
   await maybeAlert(snapshots);
+  await collectClimate().catch((e) => log('기후 계산 실패:', e.message));
   return bundle;
+}
+
+/* ------------------------------------------------ 전 지구 연대별 기후 */
+/**
+ * 19개 RGI 지역의 ERA5 기온(1950~)을 받아 연대별 요약을 만든다.
+ * 지역당 70여 년치 일별 자료라 응답이 크므로, 브라우저 대신 여기서 한 번 계산해
+ * 작은 요약만 내보낸다. 자료가 이미 최신이면 건너뛴다.
+ */
+async function collectClimate() {
+  const file = path.join(CONF.dataDir, 'climate.json');
+  try {
+    const prev = JSON.parse(await fs.readFile(file, 'utf8'));
+    const ageDays = (Date.now() - (prev.fetchedAt ?? 0)) / 86400e3;
+    if (ageDays < CONF.climateDays && prev.regions?.length === RGI_REGIONS.length) {
+      log(`기후 자료 최신 (${ageDays.toFixed(1)}일 전) — 건너뜁니다.`);
+      return prev;
+    }
+  } catch { /* 없으면 새로 만든다 */ }
+
+  if (CONF.demo) return writeClimate(file, RGI_REGIONS.map(demoRegionSummary), true);
+
+  log(`전 지구 기후 계산 시작 — ${RGI_REGIONS.length}개 지역`);
+  const out = [];
+  for (const r of RGI_REGIONS) {
+    try {
+      const j = await getJSON(archiveURL(r), 120000);
+      const years = yearlyStats(j?.daily?.time ?? [], j?.daily?.temperature_2m_mean ?? []);
+      if (years.length < 20) throw new Error('자료 부족');
+      out.push(summarize(r, years));
+      log(`  ✓ ${r.id} ${r.name} — ${years.length}개 연도`);
+    } catch (e) {
+      log(`  ! ${r.id} ${r.name}: ${e.message}`);
+    }
+    await sleep(1200);   // 공개 API 부담을 줄인다
+  }
+  if (!out.length) { log('기후 계산 실패 — 기존 파일 유지'); return null; }
+  return writeClimate(file, out, false);
+}
+
+async function writeClimate(file, regions, demo) {
+  const payload = { fetchedAt: Date.now(), baselineYears: [1951, 1980], demo, regions };
+  await fs.mkdir(CONF.dataDir, { recursive: true });
+  await writeAtomic(file, JSON.stringify(payload));
+  log(`기후 자료 저장 — ${regions.length}개 지역${demo ? ' (DEMO)' : ''}`);
+  return payload;
+}
+
+/** DEMO 전용 합성 기후. 위도가 높을수록 더 빨리 더워지는 북극 증폭을 흉내 낸다. */
+function demoRegionSummary(region) {
+  const absLat = Math.abs(region.lat);
+  const base = 28 - 0.45 * absLat - 0.0055 * region.elev;
+  const perDecade = 0.15 + 0.02 * (absLat / 10);
+  const amp = 5 + 0.25 * absLat;
+  const times = [], temps = [];
+  const endYear = new Date().getUTCFullYear() - 1;
+  for (let y = 1950; y <= endYear; y++) {
+    for (let d = 0; d < 365; d++) {
+      times.push(new Date(Date.UTC(y, 0, 1 + d)).toISOString().slice(0, 10));
+      const season = amp * Math.sin(((d - 100) / 365) * 2 * Math.PI) * (region.lat < 0 ? -1 : 1);
+      const trend = (perDecade * (y - 1965)) / 10;
+      const noise = Math.sin(y * 7.3 + d * 0.11) * 1.4;
+      temps.push(base + season + trend + noise);
+    }
+  }
+  return summarize(region, yearlyStats(times, temps));
 }
 
 /** 부분 기록으로 파일이 깨지지 않도록 임시 파일에 쓰고 rename */
@@ -258,6 +329,14 @@ const server = http.createServer(async (req, res) => {
       if (!SITES.some((s) => s.id === site)) return sendJSON(res, 400, { error: '알 수 없는 지점 id' });
       const days = Math.min(3650, Math.max(1, Number(url.searchParams.get('days') ?? 30)));
       return sendJSON(res, 200, await readHistory(site, days));
+    }
+    if (url.pathname === '/api/climate') {
+      const file = path.join(CONF.dataDir, 'climate.json');
+      try {
+        return send(res, 200, await fs.readFile(file, 'utf8'), 'application/json; charset=utf-8');
+      } catch {
+        return sendJSON(res, 503, { error: '전 지구 기후 자료를 아직 계산하지 않았습니다.' });
+      }
     }
     if (url.pathname === '/api/health') {
       let last = null;
